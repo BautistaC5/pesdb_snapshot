@@ -1,0 +1,13 @@
+{
+  "name": "efootball-scraper-miniapp",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "cheerio": "1.0.0-rc.12",
+    "express": "^4.19.2"
+  }
+}

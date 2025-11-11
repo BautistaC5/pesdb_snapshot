@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>PESDB Snapshot — Buscador</title>
+<style>
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial;margin:24px;line-height:1.35;}
+  h1{font-size:22px;margin:0 0 8px}
+  small{color:#666}
+  input{width:100%;max-width:520px;padding:10px;border:1px solid #ddd;border-radius:8px;font-size:16px}
+  table{border-collapse:collapse;width:100%;max-width:1100px;margin-top:16px}
+  th,td{border:1px solid #ddd;padding:8px;font-size:14px}
+  th{background:#f7f7f7}
+  td.num{text-align:center}
+  .muted{color:#6b7280}
+</style>
+<body>
+  <h1>PESDB Snapshot — Buscador</h1>
+  <small id="meta">Cargando snapshot…</small>
+  <div style="margin:12px 0">
+    <input id="q" type="text" placeholder="Buscá por apellido o nombre... (p. ej. 'mbappe')" autofocus />
+  </div>
+  <div class="muted">Tip: escribí 3+ letras para ver resultados.</div>
+
+  <table id="t">
+    <thead>
+      <tr>
+        <th>Pos</th><th>Nombre</th><th>Equipo</th><th>Nacionalidad</th><th>Alt</th><th>Peso</th><th>Edad</th><th>OVR</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+<script>
+let DATA = [];
+const tbody = document.querySelector("#t tbody");
+const q = document.querySelector("#q");
+const meta = document.querySelector("#meta");
+
+function sanitize(s){return String(s??"").replace(/[<>&]/g,c=>({ "<":"&lt;","&": "&amp;",">":"&gt;" }[c]))}
+
+function renderRows(rows){
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${sanitize(r.position)}</td>
+      <td>${r.url ? `<a href="${r.url}" target="_blank" rel="noreferrer">${sanitize(r.name)}</a>` : sanitize(r.name)}</td>
+      <td>${sanitize(r.team)}</td>
+      <td>${sanitize(r.nationality)}</td>
+      <td class="num">${sanitize(r.height)}</td>
+      <td class="num">${sanitize(r.weight)}</td>
+      <td class="num">${sanitize(r.age)}</td>
+      <td class="num"><b>${sanitize(r.overall)}</b></td>
+    </tr>`).join("");
+}
+
+q.addEventListener("input", () => {
+  const v = q.value.trim().toLowerCase();
+  if (v.length < 3) { renderRows([]); return; }
+  const res = DATA.filter(p => (p.name||"").toLowerCase().includes(v)).slice(0, 200);
+  renderRows(res);
+});
+
+(async function init(){
+  try {
+    const res = await fetch("./data.json", { cache: "no-cache" });
+    const snapshot = await res.json();
+    DATA = snapshot.players || [];
+    meta.textContent = `Generado: ${new Date(snapshot.generatedAt).toLocaleString()} — ${DATA.length} jugadores`;
+  } catch(e) {
+    meta.textContent = "No se pudo cargar data.json";
+  }
+})();
+</script>
+</body>
+</html>

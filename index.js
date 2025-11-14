@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3000;
 const REQUEST_DELAY_MS_MIN = 2500;  // delay mínimo entre páginas
 const REQUEST_DELAY_MS_MAX = 4000;  // delay máximo (jitter)
 const MAX_RETRIES = 5;              // reintentos ante 429/5xx
-const MAX_PAGES_DEBUG = 100;          // 0 = crawl completo; p.ej. 3 para probar
+const MAX_PAGES_DEBUG = 0;          // 0 = crawl completo; p.ej. 3 para probar
 
 /** Archivos de estado */
 const SNAPSHOT_FILE = "./data.json";
@@ -202,72 +202,86 @@ async function saveSnapshot() {
 const app = express();
 
 app.get("/", (_req, res) => {
-  // HTML súper simple con buscador en vivo
   res.setHeader("content-type", "text/html; charset=utf-8");
   res.end(`<!doctype html>
 <html lang="es">
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>PESDB Snapshot - Buscador</title>
+<title>PESDB Clone</title>
 <style>
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial;margin:24px;line-height:1.35;}
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial;margin:24px;line-height:1.35;background:#fafafa;}
   h1{font-size:22px;margin:0 0 8px}
-  small{color:#666}
-  input{width:100%;max-width:520px;padding:10px;border:1px solid #ddd;border-radius:8px;font-size:16px}
-  table{border-collapse:collapse;width:100%;max-width:1100px;margin-top:16px}
-  th,td{border:1px solid #ddd;padding:8px;font-size:14px}
-  th{background:#f7f7f7}
+  input{width:100%;max-width:400px;padding:8px;border:1px solid #ccc;border-radius:6px;font-size:15px}
+  table{border-collapse:collapse;width:100%;max-width:1200px;margin-top:16px;background:white;box-shadow:0 2px 6px rgba(0,0,0,0.05)}
+  th,td{border:1px solid #eee;padding:6px 8px;font-size:13px}
+  th{background:#f8f9fa;text-align:left}
   td.num{text-align:center}
-  .muted{color:#6b7280}
+  .pager{margin-top:16px;display:flex;gap:8px;align-items:center}
+  button{padding:6px 10px;font-size:14px;border:1px solid #ccc;background:#fff;cursor:pointer;border-radius:4px}
+  button:disabled{opacity:0.4;cursor:not-allowed}
 </style>
 <body>
-  <h1>PESDB Snapshot — Buscador</h1>
-  <small>Generado: ${SNAPSHOT.generatedAt ? sanitize(new Date(SNAPSHOT.generatedAt).toLocaleString()) : "—"} — ${SNAPSHOT.players.length} jugadores</small>
-  <div style="margin:12px 0">  
-    <input id="q" type="text" placeholder="Buscá por apellido o nombre... (p. ej. 'mbappe')" autofocus />
-  </div>
-  <div class="muted">Tip: escribí 3+ letras para ver resultados. Hay endpoint JSON en <code>/search?q=...</code></div>
+  <h1>PESDB Snapshot</h1>
+  <div><input id="q" placeholder="Buscar jugador..." autofocus/></div>
   <table id="t">
-    <thead>
-      <tr>
-        <th>Pos</th><th>Nombre</th><th>Equipo</th><th>Nacionalidad</th><th>Alt</th><th>Peso</th><th>Edad</th><th>OVR</th>
-      </tr>
-    </thead>
+    <thead><tr><th>Pos</th><th>Nombre</th><th>Equipo</th><th>Nacionalidad</th><th>Alt</th><th>Peso</th><th>Edad</th><th>OVR</th></tr></thead>
     <tbody></tbody>
   </table>
+  <div class="pager">
+    <button id="prev">← Anterior</button>
+    <span id="page-info"></span>
+    <button id="next">Siguiente →</button>
+  </div>
 <script>
-const tbody = document.querySelector("#t tbody");
-const q = document.querySelector("#q");
-let ctrl;
-function renderRows(rows){
-  tbody.innerHTML = rows.map(r => \`
-    <tr>
-      <td>\${r.position ?? ""}</td>
-      <td>\${r.url ? '<a href="'+r.url+'" target="_blank" rel="noreferrer">'+r.name+'</a>' : r.name}</td>
-      <td>\${r.team ?? ""}</td>
-      <td>\${r.nationality ?? ""}</td>
-      <td class="num">\${r.height ?? ""}</td>
-      <td class="num">\${r.weight ?? ""}</td>
-      <td class="num">\${r.age ?? ""}</td>
-      <td class="num"><b>\${r.overall ?? ""}</b></td>
-    </tr>\`).join("");
-}
-async function search(term){
-  if (ctrl) ctrl.abort();
-  ctrl = new AbortController();
-  const url = "/search?q=" + encodeURIComponent(term) + "&limit=100";
-  const res = await fetch(url, { signal: ctrl.signal });
-  const data = await res.json();
+let page=1,totalPages=1;
+const tbody=document.querySelector("#t tbody");
+const q=document.querySelector("#q");
+const prev=document.querySelector("#prev");
+const next=document.querySelector("#next");
+const info=document.querySelector("#page-info");
+
+async function load(pageNum){
+  const res=await fetch("/players?page="+pageNum);
+  const data=await res.json();
+  totalPages=data.totalPages;
+  page=data.page;
   renderRows(data.results);
+  info.textContent="Página "+page+" de "+totalPages;
+  prev.disabled=(page<=1);
+  next.disabled=(page>=totalPages);
 }
-q.addEventListener("input", (e)=>{
-  const v = e.target.value.trim();
-  if (v.length >= 3) search(v);
-  else renderRows([]);
-});
+
+function renderRows(rows){
+  tbody.innerHTML=rows.map(r=>\`
+  <tr>
+    <td>\${r.position||""}</td>
+    <td>\${r.url?'<a href="\'+r.url+\'" target="_blank">'+r.name+'</a>':r.name}</td>
+    <td>\${r.team||""}</td>
+    <td>\${r.nationality||""}</td>
+    <td class="num">\${r.height||""}</td>
+    <td class="num">\${r.weight||""}</td>
+    <td class="num">\${r.age||""}</td>
+    <td class="num"><b>\${r.overall||""}</b></td>
+  </tr>\`).join("");
+}
+
+async function search(term){
+  const res=await fetch("/search?q="+encodeURIComponent(term));
+  const data=await res.json();
+  renderRows(data.results);
+  info.textContent="Resultados: "+data.results.length;
+  prev.disabled=next.disabled=true;
+}
+
+prev.onclick=()=>{ if(page>1){ load(page-1); } };
+next.onclick=()=>{ if(page<totalPages){ load(page+1); } };
+q.oninput=()=>{ const v=q.value.trim(); if(v.length>=3) search(v); else load(1); };
+
+load(1);
 </script>
 </body></html>`);
 });
+
 
 /** JSON: búsqueda por nombre/apellido */
 app.get("/search", (req, res) => {
@@ -303,11 +317,39 @@ app.get("/refresh", async (_req, res) => {
   }
 });
 
-/* Boot */
-await loadSnapshot();
-const appServer = express();
-appServer.use(app);
-appServer.listen(PORT, () => {
-  console.log(`Mini app lista en http://localhost:${PORT}`);
-  console.log(`Refrescá datos en http://localhost:${PORT}/refresh`);
+app.get("/players", (req, res) => {
+  const page = Math.max(1, parseInt(req.query.page || "1"));
+  const pageSize = 50; // cantidad de jugadores por página
+  const start = (page - 1) * pageSize;
+  const end = start + pageSize;
+  const totalPages = Math.ceil(SNAPSHOT.players.length / pageSize);
+
+  const results = SNAPSHOT.players.slice(start, end);
+
+  res.json({
+    page,
+    totalPages,
+    count: results.length,
+    results
+  });
 });
+
+
+/* Boot (sin top-level await, compatible con pkg) */
+async function start() {
+  try {
+    await loadSnapshot();
+    const appServer = express();
+    appServer.use(app);
+    appServer.listen(PORT, () => {
+      console.log(`Mini app lista en http://localhost:${PORT}`);
+      console.log(`Refrescá datos en http://localhost:${PORT}/refresh`);
+    });
+  } catch (err) {
+    console.error("Fallo al iniciar:", err);
+    process.exit(1);
+  }
+}
+
+start();
+

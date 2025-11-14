@@ -1,8 +1,9 @@
 {
   "name": "efootball-scraper-miniapp",
   "version": "1.0.0",
-  "type": "module",
   "private": true,
+  "type": "module",
+  "bin": "index.js",
   "scripts": {
     "start": "node index.js"
   },
